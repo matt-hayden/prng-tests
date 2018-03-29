@@ -4,6 +4,7 @@ logger = logging.getLogger(__name__)
 debug, info, warn, error, panic = logger.debug, logging.info, logging.warn, logging.error, logging.critical
 
 import bisect
+import hashlib
 import math
 from pathlib import Path
 
@@ -16,10 +17,18 @@ class WordListBase:
             filename = Path(iterable)
             iterable = [ line.strip() for line in filename.open('Ur') ]
         self.values = list(iterable)
-        info("wordlist is len(%d)", len(self.values))
+        info("wordlist is len(%d)", len(self))
         wl = self.wordlength = power_of_2_upper_bound(len(self.values))
         self.wordmask = (1<<wl)-1
         debug("wordlength %d, wordmask 0x%x", self.wordlength, self.wordmask)
+    def __len__(self):
+        return len(self.values)
+    def get_fingerprint(self, algo=hashlib.sha512):
+        y = algo()
+        y.update(' '.join(self.values).encode())
+        return y.hexdigest()
+    def __repr__(self):
+        return "Wordlist %d <%s>" % (len(self), self.get_fingerprint()[-8:])
     def words_for_bits(self, nbits):
         return math.ceil( nbits/math.log2(len(self.values)) )
     def lookup(self, value):
@@ -33,18 +42,26 @@ class WordListBase:
         for w in words:
             b <<= self.wordlength
             b |= self.lookup(w)
-        return b
+        return hex(b)
     def _decode_r(self, number):
         while number:
             i = number&self.wordmask
             yield self.values[i]
             number >>= self.wordlength
-    def decode(self, *args):
-        rvalues = list(self._decode_r(*args))
+    def decode(self, arg):
+        if isinstance(arg, str):
+            arg = int(arg, 16)
+        rvalues = list(self._decode_r(arg))
         rvalues.reverse()
         return rvalues
     def randomize(self, length):
         return [ choice(self.values) for _ in range(length) ]
+    def show(self, words, encodings='hex base64 base85'.split()):
+        b = self.encode(words)
+        rjust = len(b)
+        for e in encodings:
+            print(e.ljust(6), encoders[e.lower()](b).rjust(rjust))
+        
 class WordListWithoutChecksum(WordListBase):
     """
     Without a checksum, integer 0 does not generate distinct passphrases.
@@ -69,8 +86,8 @@ class WordListWithChecksum(WordListBase):
         if not checksum:
             def checksum(w):
                 return len(w) % 2
-        assert checksum(self.values[0]), \
-               "Poorly designed checksum function should be nonzero for zeroth value"
+        assert callable(checksum) and checksum(self.values[0]), \
+            "Improper checksum function"
         self.checksum = checksum # staticmethod
     def encode(self, words):
         if isinstance(words, str):
@@ -79,7 +96,7 @@ class WordListWithChecksum(WordListBase):
         for w in words:
             b <<= self.wordlength
             b |= (self.checkmask*self.checksum(w))|self.lookup(w)
-        return b
+        return hex(b)
     def _decode_r(self, number):
         while number:
             i = number&self.wordmask
