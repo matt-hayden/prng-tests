@@ -1,4 +1,3 @@
-#! /usr/bin/env python3
 """Correct Horse Battery Staple-style password generator
 
 Usage:
@@ -11,6 +10,8 @@ Usage:
 Options:
   -b N --size=N             Size in bits
   -f FILE --wordlist=FILE   Location of specific word list
+  --pwnedpasswords          Check passwords against pwnedpasswords.com
+  -d SEP --separator=SEP    Use this instead of space
 """
 
 import sys
@@ -18,6 +19,7 @@ import sys
 from docopt import docopt
 
 from . import *
+from .pwnedpasswords import check_password
 from .util import *
 
 
@@ -36,9 +38,13 @@ def main():
         print("For", wc)
         wc.show(words, **kwargs)
     if options['gen']:
+        sep = options.pop('--separator') or ' '
         encodings = options.pop('ENCODING')
         words = gen()
-        print(' '.join(words))
+        if options.pop('--pwnedpasswords'):
+            while not check_password([sep.join(words)]):
+                words = gen()
+        print(sep.join(words))
         if encodings:
             show(words, encodings=encodings)
     elif options['expand']:
