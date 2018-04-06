@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import shelve as kvs
 
+import docopt
 import requests
 
 
@@ -53,36 +54,49 @@ class PasswordHashCache:
                 continue
             suffix, c = line.split(':')
             self.cache[(prefix+suffix).upper()] = int(c)
-    def get_hash_freqs(self, hkeys, refresh=False):
-        hkeys = list(hkeys)
-        if refresh:
-            notfound = hkeys
+    def get_freqs(self, arg, refresh=False):
+        """Get a Counter() with frequencies of passwords pwned
+
+        Call with a dict in the form { hash: label } where label could be the cleartext, or maybe a username
+        Call with any other iterable of strings, and those will be assumed to be passwords
+        """
+        if isinstance(arg, dict):
+            lookup = arg
         else:
-            notfound = [ hk for hk in hkeys if hk not in self.cache ]
+            lookup = { _make_key(k): k for k in arg }
+        if refresh:
+            notfound = list(lookup.keys()) # hash values
+        else:
+            notfound = [ hk for hk in lookup if hk not in self.cache ]
         if notfound:
             self.update(notfound)
-        return collections.Counter( { hk: self.cache.get(hk, 0) for hk in hkeys } )
-    def get_freqs(self, keys, hfunc=hashlib.sha1):
-        lookup = { _make_key(k): k for k in keys }
-        c = collections.Counter()
-        for hk, freq in self.get_hash_freqs(lookup.keys()).items():
-            c[lookup.pop(hk)] = freq
-        assert not lookup
-        return c
-def get_freqs(keys):
+        return collections.Counter( { lookup[hk]: self.cache.get(hk, 0) for hk in lookup } )
+
+def get_freqs(*args, **kwargs):
     with PasswordHashCache() as c:
-        return c.get_freqs(keys)
-def check_password(*args):
-    c = get_freqs(*args)
+        return c.get_freqs(*args, **kwargs)
+def check_password(arg, **kwargs):
+    c = get_freqs([arg], **kwargs)
+    return [ p for p, f in c.items() if not f ]
+def check_hashes(values):
+    c = get_freqs({ hk: n for n, hk in enumerate(values) }, **kwargs)
     return [ p for p, f in c.items() if not f ]
 
 if __name__ == '__main__':
-    import logging
-    logging.basicConfig(level=logging.DEBUG)
+    if __debug__:
+        import logging
+        logging.basicConfig(level=logging.DEBUG)
     
     import fileinput
+    import sys
 
     lines = [ line.rstrip('\r\n') for line in fileinput.input() ]
+    good = bad = 0
     for p, freq in get_freqs(lines).most_common():
         print("{: 18,d} {}".format(freq, p))
+        if (freq == 0):
+            good += 1
+        else:
+            bad += 1
+    sys.exit(0 if good else 10)
 

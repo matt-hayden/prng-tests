@@ -13,6 +13,9 @@ Options:
   --pwnedpasswords          Check passwords against pwnedpasswords.com
   -d SEP --separator=SEP    Use this instead of space
 """
+if __debug__:
+    import logging
+    logging.basicConfig(level=logging.DEBUG)
 
 import sys
 
@@ -42,7 +45,7 @@ def main():
         encodings = options.pop('ENCODING')
         words = gen()
         if options.pop('--pwnedpasswords'):
-            while not check_password([sep.join(words)]):
+            while not all(check_password(pw) for pw in [ sep.join(words), ' '.join(words) ]):
                 words = gen()
         print(sep.join(words))
         if encodings:
