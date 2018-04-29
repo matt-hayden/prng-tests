@@ -3,7 +3,7 @@
 
 # Initialize AES128 with 16 random bytes.
 function random_stream() {
-  (head -c 16 /dev/urandom; cat /dev/zero) |
+  (openssl rand 16; cat /dev/zero) |
   openssl enc -aes128 -nosalt -pass file:/dev/urandom 2>/dev/null
 }
 
